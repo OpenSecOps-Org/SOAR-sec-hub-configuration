@@ -1,0 +1,42 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Description: >
+  SOAR-sec-hub-configuration. Sets up the custom event bus to pass events to the Org account for
+  processing by the SOAR. 
+
+Parameters:
+  OrganizationAccountNumber:
+    Type: String
+    Description: The account number of the Organisation account
+    Default: "111111111111"
+
+  CustomEventBusName:
+    Type: String
+    Description: The name of the custom event bus
+    Default: SOAR-events
+
+
+Resources:
+
+  #----------------------------------------------------------------------------------
+  #
+  # Arrange for events we care about to be propagated to the custom event bus in the
+  # organisation account where the SOAR can act on them for its own purposes.
+  #
+  #----------------------------------------------------------------------------------
+
+  FindingsRule:
+    Type: "AWS::Events::Rule"
+    Properties:
+      Description: Send all aggregated SecHub findings to the custom event bus SOAR-events in the organisation account
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.securityhub
+        detail-type:
+          - Security Hub Findings - Imported
+      Targets:
+        - Id: SecHubFindingsToOrgAccount
+          Arn: !Sub "arn:aws:events:${AWS::Region}:${OrganizationAccountNumber}:event-bus/${CustomEventBusName}"
+          RoleArn: !Sub "arn:aws:iam::${AWS::AccountId}:role/EventBridgeInvokeEventBusRole"

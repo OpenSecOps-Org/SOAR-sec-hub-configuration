@@ -1,0 +1,20 @@
+# Deployment configuration
+
+repo-name    = "SOAR-sec-hub-configuration"
+part-of      = 'soar'
+
+
+[[pre-SAM-CloudFormation]]
+name         = "INFRA-sec-hub-custom-event-bus"
+template     = 'cloudformation/sec-hub-custom-event-bus.yaml'
+account      = '{admin-account}'
+regions      = '{all-regions}'
+
+
+[SAM]
+stack-name   = "INFRA-sec-hub-configuration"
+profile      = "security-account"
+regions      = '{all-regions}'
+
+
+

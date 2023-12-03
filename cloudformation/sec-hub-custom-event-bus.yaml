@@ -1,0 +1,39 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  Sets up a custom Event bus in the organization account, allowing all accounts in the
+  organisation to post events to it which then are picked up in the Org account. Used 
+  for syncing SecHub Control between all accounts in a region, for sending Security
+  Hub findings for all accounts (from the Security account where they are aggregated), 
+  and for S3 bucket tagging events to detect requests for public S3 buckets.
+
+Parameters:
+  OrgId:
+    Type: String
+    Description: The AWS Organization ID
+    Default: 'o-xxxxxxxxxx'
+
+  CustomEventBusName:
+    Type: String
+    Description: The name of the custom event bus
+    Default: SOAR-events
+
+Resources:
+  SecHubCustomEventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: !Ref CustomEventBusName
+
+  CustomEventBusPolicy: 
+      Type: AWS::Events::EventBusPolicy
+      Properties: 
+          EventBusName: !Ref CustomEventBusName
+          StatementId: "WholeOrgCanPutEvents"
+          Statement:
+              Effect: "Allow"
+              Principal: "*"
+              Action: "events:PutEvents"
+              Resource: !GetAtt SecHubCustomEventBus.Arn
+              Condition:
+                  StringEquals:
+                      "aws:PrincipalOrgID": !Ref OrgId
