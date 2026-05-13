@@ -1,0 +1,4 @@
+component_name = "SOAR-sec-hub-configuration"
+converted = true
+converted_in = "v1.3.12"
+acknowledged_cves = []
