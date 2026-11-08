@@ -21,8 +21,13 @@ Resources:
 
   #----------------------------------------------------------------------------------
   #
-  # Arrange for events we care about to be propagated to the custom event bus in the
-  # organisation account where the SOAR can act on them for its own purposes.
+  # Arrange for Security Hub findings to be propagated to the custom event bus in the
+  # organisation account, where the SOAR acts on them.
+  #
+  # Deployed to the main Region only. Security Hub aggregates findings, and the events
+  # for them, into the main Region, so a copy of this rule in any other Region does
+  # nothing useful. Earlier versions deployed this stack to all Regions; those copies
+  # in non-main Regions are destined to be removed, manually.
   #
   #----------------------------------------------------------------------------------
 
@@ -40,3 +45,76 @@ Resources:
         - Id: SecHubFindingsToOrgAccount
           Arn: !Sub "arn:aws:events:${AWS::Region}:${OrganizationAccountNumber}:event-bus/${CustomEventBusName}"
           RoleArn: !Sub "arn:aws:iam::${AWS::AccountId}:role/EventBridgeInvokeEventBusRole"
+
+
+  #----------------------------------------------------------------------------------
+  #
+  # Alarms on the forwarding of findings to the SOAR. If findings stop reaching the
+  # SOAR, it produces no tickets, incidents or auto-remediations, and it cannot report
+  # its own missing input. These alarms therefore reach people through an SNS topic of
+  # their own, which does not depend on the SOAR.
+  #
+  #----------------------------------------------------------------------------------
+
+  # AWS administrators should subscribe to this topic: it is the only way these alarms
+  # reach anyone while the SOAR receives nothing. The template creates no subscriptions.
+  FindingsForwardingFailuresTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: OpenSecOpsSOARFindingsForwardingFailures
+      DisplayName: OpenSecOps SOAR Findings Forwarding Failures
+
+  # Findings reach the rule, but delivering them to the SOAR fails. EventBridge counts a
+  # failure only after its own retries, so each one is a finding that never reaches the SOAR.
+  FindingsForwardingFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: INFRA-SOAR-FindingsForwarding-Failure-CRITICAL
+      AlarmDescription: >-
+        Security Hub findings are failing to reach the SOAR. The rule that forwards them to the
+        SOAR event bus in the organisation account has deliveries that failed permanently, and
+        the SOAR produces no tickets, incidents or auto-remediations for those findings. Check
+        the rule's IAM role, and any SCP or event bus policy that denies events:PutEvents.
+      Namespace: AWS/Events
+      MetricName: FailedInvocations
+      Dimensions:
+        - Name: RuleName
+          Value: !Select [1, !Split ["/", !GetAtt FindingsRule.Arn]]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching   # EventBridge sends this metric only when it is not zero
+      AlarmActions:
+        - !Ref FindingsForwardingFailuresTopic
+      OKActions:
+        - !Ref FindingsForwardingFailuresTopic
+
+  # Nothing reaches the rule: it is disabled or deleted, or Security Hub has stopped sending
+  # events. Even a dormant installation sends thousands of findings events a day, so a whole
+  # day without a single delivery attempt means the route is broken.
+  FindingsForwardingSilenceAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: INFRA-SOAR-FindingsForwarding-Silence-CRITICAL
+      AlarmDescription: >-
+        No Security Hub findings have been forwarded to the SOAR for 24 hours. The rule that
+        forwards them to the SOAR event bus in the organisation account made no delivery attempt,
+        so it may be disabled or deleted, or Security Hub may have stopped sending events. While
+        this alarm is on, the SOAR receives nothing.
+      Namespace: AWS/Events
+      MetricName: Invocations
+      Dimensions:
+        - Name: RuleName
+          Value: !Select [1, !Split ["/", !GetAtt FindingsRule.Arn]]
+      Statistic: Sum
+      Period: 86400
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching      # EventBridge sends this metric only when it is not zero
+      AlarmActions:
+        - !Ref FindingsForwardingFailuresTopic
+      OKActions:
+        - !Ref FindingsForwardingFailuresTopic

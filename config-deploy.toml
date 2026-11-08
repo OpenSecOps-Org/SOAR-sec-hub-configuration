@@ -14,7 +14,7 @@ regions      = '{all-regions}'
 [SAM]
 stack-name   = "INFRA-sec-hub-configuration"
 profile      = "security-account"
-regions      = '{all-regions}'
+regions      = '{main-region}'   # Security Hub aggregates findings into the main Region
 
 
 
